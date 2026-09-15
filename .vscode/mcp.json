@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "long-running-mcp-tools": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
