@@ -130,12 +130,6 @@ do not survive a server restart.
 The server uses Streamable HTTP and exposes its MCP endpoint at
 `http://localhost:8000/mcp`.
 
-The `adaptive_delay` example uses a public synchronous tool and a hidden
-task-enabled twin to implement timeout-based cancellation and restart. See
-[AdaptiveTasks design notes and validation results](docs/adaptive-tasks.md)
-for its behavior, known version/MRTR regressions, and test commands. Expected
-failures and Redis-dependent skips must be reported separately from passes.
-
 ## Development Container
 
 The recommended development environment is the included VS Code dev container.
