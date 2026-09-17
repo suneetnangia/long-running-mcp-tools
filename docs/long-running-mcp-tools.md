@@ -80,15 +80,84 @@ connection.
 
 ## 3. Approach 2: the client decides when to promote
 
-[TODO: update details]
+The `flexible_hello` example demonstrates the alternative approach:
+the **client** chooses foreground or Task execution for each
+call. The server registers one tool with
+`TaskConfig(mode="optional", poll_interval=timedelta(seconds=2))`, advertising
+that it supports either request style.
+
+FastMCP's `TaskConfig` has three modes:
+
+| Mode | Client without Task opt-in | Client with Task opt-in |
+| --- | --- | --- |
+| `forbidden` | Runs inline | Runs inline |
+| `optional` | Runs inline | Runs as a background Task |
+| `required` | Rejected: task required | Runs as a background Task |
+
+See the
+[FastMCP execution modes documentation](https://gofastmcp.com/servers/tasks#execution-modes)
+for the configuration contract and
+[Optional Tasks design notes](./optional-tasks.md) for the mode comparison,
+tradeoffs, and testing guidance.
+
+The same tool therefore has two execution paths:
+
+* A call without compatible Task opt-in waits for `flexible_hello` to finish
+  and returns the greeting inline.
+* A call with compatible Task opt-in starts the work as a background Task and
+  returns a task handle. The client then polls for the result.
+
+A FastMCP client's ordinary `call_tool()` can negotiate Task opt-in and poll
+transparently, so "a normal call" is not the same as "always inline"; the
+client library's mode setting decides which path an ordinary-looking call
+takes.
+
+Optional mode does not inspect elapsed time or promote a call automatically.
+An ordinary call with a 10-minute delay still waits inline, while a
+call with Task opt-in and a short delay still creates a Task. The client
+chooses execution mode when it submits the request, not while the tool runs.
+
+This approach avoids the cancellation and restart performed by
+`AdaptiveTasks`: the server knows the execution mode before the tool body
+starts. This does not establish an exactly-once execution guarantee; retries
+or worker redelivery can still repeat effects. It also gives a
+client control over the decision, using context such as whether the user wants
+to keep working while a deployment runs. The tradeoff is that the client must
+support Tasks and make the choice before it knows the actual runtime. A client
+that chooses the foreground path cannot later promote that in-flight call
+merely because it is taking longer than expected.
+
+The configured two-second polling interval is a suggestion included in Task
+metadata. It guides status checks but does not select an execution path, change
+the requested delay, or impose a timeout. It has no effect on foreground calls.
+
+### Example prompts
+
+With the server running in VS Code chat, the inline path can be requested with:
+
+```text
+Call flexible_hello from long-running-mcp-tools with delay_ms 1000.
+```
+
+The optional Task path can be requested with:
+
+```text
+Call flexible_hello from long-running-mcp-tools as a background task with
+delay_ms 600000.
+```
+
+The intended outcome is an inline greeting after about one second for the first
+prompt, and a Task submission for the 10-minute delay in the second. Prompt
+wording alone does not guarantee that the client selects either mode; confirm
+the actual path by inspecting the request and response exchange, since a
+waiting result and chat text look the same either way.
 
 ## 4. Current limitation: client support for Task
 
 The Tasks extension is recent, and client support is uneven.
 
-VS Code (GitHub Copilot Chat) supports Tasks, implemented in
-[microsoft/vscode#277888][vscode-tasks-pr] and refined in
-[microsoft/vscode#286447][vscode-tasks-update-pr]. It only polls `tasks/get`
+VS Code (GitHub Copilot Chat) implemented the Tasks extension in
+[microsoft/vscode#277888][vscode-tasks-pr]. It only polls `tasks/get`
 when the server declares the tool tasked (`task=True`, or a `TaskConfig` mode
 that resolves to tasked execution); a `task=False` tool runs synchronously as
 usual. VS Code shows no distinct "running as a background task" indicator, so
@@ -117,13 +186,22 @@ MCP tool calls, replacing ad hoc per-server polling schemes with a shared
 lifecycle (`working` / `input_required` / `completed` / `failed` /
 `cancelled`). The question this repository investigates is *when* to use it:
 promoting every call to a Task wastes round trips on fast calls, while never
-promoting risks timeouts on slow ones. 
+promoting risks timeouts on slow ones.
 
-`AdaptiveTasks` answers that question
-on the server, from measured elapsed time, with a documented set of tradeoffs
-and known regressions (see [AdaptiveTasks design notes](./adaptive-tasks.md)).
+`AdaptiveTasks` answers that question on the server, from measured elapsed
+time. It preserves the direct path for calls that finish within the grace
+period, then cancels and restarts slower calls as Tasks. This requires no
+advance runtime estimate from the caller, but the restart can repeat work and
+is only safe for operations designed around that behavior. See the
+[AdaptiveTasks design notes](./adaptive-tasks.md) for the full tradeoffs and
+known regressions.
 
-[TODO: update conclusion on the approach 2]
+Optional execution answers the question before the call starts. It runs the
+tool in the mode the client selects, avoiding cancellation and restart, but it
+relies on the client or user to anticipate which calls should run in the
+background. Neither approach is universally better: server-side promotion
+fits unpredictable runtimes, while client-side selection fits cases where the
+caller already has enough context to choose.
 
 In the meantime, client
 support for Tasks is still emerging. VS Code has it, while other major AI
