@@ -30,3 +30,32 @@ async def test_delayed_hello_advertises_delay_bounds() -> None:
 
     assert delay_schema["minimum"] == 10
     assert delay_schema["maximum"] == 600_000
+
+
+async def test_adaptive_delay_hides_its_task_twin_from_listing() -> None:
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+
+    names = {tool.name for tool in tools}
+    assert "adaptive_delay" in names
+    assert "adaptive_delay__adaptive_task" not in names
+
+
+async def test_adaptive_delay_fast_call_runs_inline(
+    promoted_tool_names: list[str],
+) -> None:
+    async with Client(mcp) as client:
+        result = await client.call_tool("adaptive_delay", {"delay_ms": 50})
+
+    assert result.data == "Hello from an adaptive task"
+    assert promoted_tool_names == []
+
+
+async def test_adaptive_delay_slow_call_is_promoted_and_still_resolves(
+    promoted_tool_names: list[str],
+) -> None:
+    async with Client(mcp) as client:
+        result = await client.call_tool("adaptive_delay", {"delay_ms": 1_500})
+
+    assert result.data == "Hello from an adaptive task"
+    assert promoted_tool_names == ["adaptive_delay__adaptive_task"]
