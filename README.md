@@ -145,7 +145,10 @@ The `flexible_hello` tool lets the caller choose whether to wait for an inline
 result or create a background task:
 
 ```python
-@mcp.tool(task=TaskConfig(mode="optional"))
+from datetime import timedelta
+
+
+@mcp.tool(task=TaskConfig(mode="optional", poll_interval=timedelta(seconds=2)))
 async def flexible_hello(delay_ms: int = 1_000) -> str:
     await asyncio.sleep(delay_ms / 1_000)
     return "Hello from a flexible task"
@@ -172,6 +175,26 @@ background.
 `flexible_hello` accepts `delay_ms` values from `10` through `600000`. For
 example, `1000` means 1 second and `600000` means 10 minutes. Both execution
 paths return `Hello from a flexible task` when the delay finishes.
+
+### Polling Interval
+
+`flexible_hello` sets `poll_interval=timedelta(seconds=2)` in its optional task
+configuration. When the call runs as a background task, the server includes
+this suggested interval in the task metadata so the client can schedule status
+checks. The client implements polling; setting this value does not itself send
+requests or enable task support in a client.
+
+The interval is a hint, not a guarantee of an exact two-second cadence.
+FastMCP clients may poll more frequently at first and back off toward the
+suggested interval. Other clients may use a different polling policy.
+Shorter intervals can expose completion sooner but increase status-request
+traffic; longer intervals reduce traffic but can delay observing completion.
+
+The polling interval does not change `delay_ms`, impose a timeout, or select
+foreground versus background execution. It has no effect on foreground calls.
+It is also separate from `adaptive_delay`'s grace period, which controls when
+that tool is promoted to a task. This configuration applies only to
+`flexible_hello`.
 
 ### Test in VS Code
 

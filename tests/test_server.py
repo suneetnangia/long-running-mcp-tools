@@ -1,5 +1,7 @@
 """Tests for the delayed hello MCP server."""
 
+from datetime import timedelta
+
 from fastmcp import Client
 from fastmcp_tasks import call_tool_task
 
@@ -34,6 +36,14 @@ async def test_flexible_hello_runs_as_background_task() -> None:
         result = await task
 
     assert result.data == "Hello from a flexible task"
+
+
+async def test_flexible_hello_configures_optional_task_poll_interval() -> None:
+    tool = await mcp.get_tool("flexible_hello")
+
+    assert tool is not None
+    assert tool.task_config.mode == "optional"
+    assert tool.task_config.poll_interval == timedelta(seconds=2)
 
 
 async def test_flexible_hello_advertises_delay_bounds() -> None:

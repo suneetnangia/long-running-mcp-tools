@@ -1,6 +1,7 @@
 """Task-enabled FastMCP server with a configurable delayed greeting."""
 
 import asyncio
+from datetime import timedelta
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -38,7 +39,7 @@ async def delayed_hello(
     return "Hello"
 
 
-@mcp.tool(task=TaskConfig(mode="optional"))
+@mcp.tool(task=TaskConfig(mode="optional", poll_interval=timedelta(seconds=2)))
 async def flexible_hello(
     delay_ms: Annotated[
         int,
