@@ -1,4 +1,7 @@
-# Long-Running MCP Tools
+---
+title: Long-Running MCP Tools
+description: Examples of inline, background, and adaptive long-running FastMCP tools
+---
 
 Model Context Protocol (MCP) tools often wrap work that cannot finish within a
 single short-lived request. A tool might start a CI pipeline, deploy
@@ -135,6 +138,67 @@ task-enabled twin to implement timeout-based cancellation and restart. See
 [AdaptiveTasks design notes and validation results](docs/adaptive-tasks.md)
 for its behavior, known version/MRTR regressions, and test commands. Expected
 failures and Redis-dependent skips must be reported separately from passes.
+
+## Optional Task Execution
+
+The `flexible_hello` tool lets the caller choose whether to wait for an inline
+result or create a background task:
+
+```python
+@mcp.tool(task=TaskConfig(mode="optional"))
+async def flexible_hello(delay_ms: int = 1_000) -> str:
+    await asyncio.sleep(delay_ms / 1_000)
+    return "Hello from a flexible task"
+```
+
+`TaskConfig(mode="optional")` allows two request styles for the same tool:
+
+| Client request | Server response |
+| --- | --- |
+| A normal `tools/call` request | Waits for the tool and returns its result inline |
+| A task-augmented `tools/call` request | Starts background execution and returns a task handle |
+
+Optional mode does not choose a path based on the delay. The caller must
+explicitly request task execution and advertise support for the MCP Tasks
+extension. An ordinary call with a 10-minute delay still waits for 10 minutes.
+A task-aware call with a 1-second delay still creates a background task.
+
+This differs from `task=True`, which requires task execution, and from this
+repository's `adaptive_delay`, which automatically promotes calls that exceed
+its grace period. Optional mode is useful when the same operation is commonly
+fast but callers may already know that a particular invocation belongs in the
+background.
+
+`flexible_hello` accepts `delay_ms` values from `10` through `600000`. For
+example, `1000` means 1 second and `600000` means 10 minutes. Both execution
+paths return `Hello from a flexible task` when the delay finishes.
+
+### Test in VS Code
+
+1. Run **Tasks: Run Task** from the Command Palette and select
+	**MCP: Run server**.
+2. Open the Chat view and select **Agent** mode.
+3. Open the Chat tools picker and enable the tools from
+	`long-running-mcp-tools`.
+4. Send this prompt to exercise the normal inline path:
+
+	```text
+	Call flexible_hello from long-running-mcp-tools with delay_ms 1000.
+	```
+
+5. Send this prompt to request the optional background path:
+
+	```text
+	Call flexible_hello from long-running-mcp-tools as a background task with delay_ms 600000.
+	```
+
+The first call completes after about 1 second. The second call should return a
+task without keeping the tool request open for 10 minutes, then make the final
+greeting available when the task completes.
+
+After changing tool definitions, stop and restart **MCP: Run server**, then
+refresh the server or tool list in VS Code before testing again. If port 8000 is
+already in use, stop the older server task before restarting it.
 
 ## Development Container
 

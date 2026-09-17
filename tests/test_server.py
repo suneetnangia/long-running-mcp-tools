@@ -21,6 +21,32 @@ async def test_delayed_hello_runs_as_background_task() -> None:
     assert result.data == "Hello"
 
 
+async def test_flexible_hello_runs_inline() -> None:
+    async with Client(mcp) as client:
+        result = await client.call_tool("flexible_hello", {"delay_ms": 10})
+
+    assert result.data == "Hello from a flexible task"
+
+
+async def test_flexible_hello_runs_as_background_task() -> None:
+    async with Client(mcp, mode="auto") as client:
+        task = await call_tool_task(client, "flexible_hello", {"delay_ms": 10})
+        result = await task
+
+    assert result.data == "Hello from a flexible task"
+
+
+async def test_flexible_hello_advertises_delay_bounds() -> None:
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+
+    flexible_hello = next(tool for tool in tools if tool.name == "flexible_hello")
+    delay_schema = flexible_hello.input_schema["properties"]["delay_ms"]
+
+    assert delay_schema["minimum"] == 10
+    assert delay_schema["maximum"] == 600_000
+
+
 async def test_delayed_hello_advertises_delay_bounds() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
