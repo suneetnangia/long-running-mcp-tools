@@ -1,9 +1,11 @@
 """Task-enabled FastMCP server with a configurable delayed greeting."""
 
 import asyncio
+from datetime import timedelta
 from typing import Annotated
 
 from fastmcp import FastMCP
+from fastmcp.utilities.tasks import TaskConfig
 from fastmcp_tasks import TasksExtension
 from pydantic import Field
 
@@ -35,6 +37,22 @@ async def delayed_hello(
     """Return a greeting after the requested delay."""
     await asyncio.sleep(delay_ms / 1_000)
     return "Hello"
+
+
+@mcp.tool(task=TaskConfig(mode="optional", poll_interval=timedelta(seconds=2)))
+async def flexible_hello(
+    delay_ms: Annotated[
+        int,
+        Field(
+            ge=10,
+            le=600_000,
+            description="Delay in milliseconds, from 10 ms through 10 minutes.",
+        ),
+    ] = 1_000,
+) -> str:
+    """Return a greeting inline or as a caller-requested background task."""
+    await asyncio.sleep(delay_ms / 1_000)
+    return "Hello from a flexible task"
 
 
 @adaptive_tasks.tool()
