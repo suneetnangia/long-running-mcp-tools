@@ -23,8 +23,11 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from fastmcp.server.extensions import ServerExtension
 from fastmcp.server.middleware import Middleware
 from fastmcp.tools.function_tool import FunctionTool
+from fastmcp.utilities.logging import get_logger
 from fastmcp.utilities.tasks import TASKS_EXTENSION_ID
 from fastmcp_tasks.creation import create_task
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -123,9 +126,15 @@ class AdaptiveTasks(ServerExtension):
             # Not one of ours -- nothing to race.
             return await call_next()
 
+        logger.info("Received adaptive tool call for %s", params.name)
+
         if context.client_extension_settings(TASKS_EXTENSION_ID) is None:
             # The client can't parse a CreateTaskResult, so there is nothing
             # safe to promote to; just let the call run to completion.
+            logger.info(
+                "Client does not support background tasks; running tool %s inline",
+                params.name,
+            )
             return await call_next()
 
         work = asyncio.ensure_future(call_next())
@@ -137,6 +146,10 @@ class AdaptiveTasks(ServerExtension):
             work.cancel()
             with suppress(asyncio.CancelledError):
                 await work
+            logger.info(
+                "Grace period exceeded for tool %s; promoting to background task",
+                params.name,
+            )
             return await create_task(twin, params.arguments, context)
 
 
